@@ -203,6 +203,65 @@ class ApiService {
     return response.statusCode == 201 || response.statusCode == 200;
   }
 
+  static Future<List<EnrichedBooking>> getEnrichedBookings() async {
+    final String? token = await _getToken();
+    if (token == null) throw Exception('Token tidak ditemukan.');
+
+    // Ambil semua data yang diperlukan secara paralel
+    final responses = await Future.wait([
+      http.get(Uri.parse('$_baseUrl/bookings'), headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'}),
+      http.get(Uri.parse('$_baseUrl/pkl-mahasiswa'), headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'}),
+      http.get(Uri.parse('$_baseUrl/sempro-mahasiswa'), headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'}),
+      http.get(Uri.parse('$_baseUrl/ta-mahasiswa'), headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'})
+    ]);
+
+    for (var response in responses) {
+      if (response.statusCode != 200) throw Exception('Gagal memuat salah satu data. Status: ${response.statusCode}');
+    }
+
+    // Decode semua response
+    final bookingsResponse = jsonDecode(responses[0].body);
+    final List<dynamic> bookingsData = bookingsResponse['data'];
+    final pklData = jsonDecode(responses[1].body) as List<dynamic>;
+    final semproData = jsonDecode(responses[2].body) as List<dynamic>;
+    final taData = jsonDecode(responses[3].body) as List<dynamic>;
+
+    final List<EnrichedBooking> enrichedBookings = [];
+    final List<Booking> allBookings = bookingsData.map((json) => Booking.fromJson(json)).toList();
+
+    for (final booking in allBookings) {
+      List<Dosen> dosenList = [];
+      dynamic detailSidang;
+
+      try {
+        if (booking.tipe == '1') { // PKL
+          detailSidang = pklData.firstWhere((item) => item['mahasiswa']['id_mahasiswa'] == booking.mahasiswaId);
+          if(detailSidang['pembimbing']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['pembimbing']['id_dosen'], nama: detailSidang['pembimbing']['nama_pembimbing']));
+          if(detailSidang['penguji']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['penguji']['id_dosen'], nama: detailSidang['penguji']['nama_penguji']));
+        } else if (booking.tipe == '2') { // Sempro
+          detailSidang = semproData.firstWhere((item) => item['mahasiswa']['id_mahasiswa'] == booking.mahasiswaId);
+          if(detailSidang['pembimbing_1']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['pembimbing_1']['id_dosen'], nama: detailSidang['pembimbing_1']['nama_pembimbing_1']));
+          if(detailSidang['pembimbing_2']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['pembimbing_2']['id_dosen'], nama: detailSidang['pembimbing_2']['nama_pembimbing_2']));
+          if(detailSidang['penguji']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['penguji']['id_dosen'], nama: detailSidang['penguji']['nama_penguji']));
+        } else if (booking.tipe == '3') { // TA
+          detailSidang = taData.firstWhere((item) => item['mahasiswa']['id_mahasiswa'] == booking.mahasiswaId);
+          if(detailSidang['pembimbing_1']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['pembimbing_1']['id_dosen'], nama: detailSidang['pembimbing_1']['nama_pembimbing_1']));
+          if(detailSidang['pembimbing_2']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['pembimbing_2']['id_dosen'], nama: detailSidang['pembimbing_2']['nama_pembimbing_2']));
+          if(detailSidang['penguji_1']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['penguji_1']['id_dosen'], nama: detailSidang['penguji_1']['nama_penguji_1']));
+          if(detailSidang['penguji_2']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['penguji_2']['id_dosen'], nama: detailSidang['penguji_2']['nama_penguji_2']));
+          if(detailSidang['ketua']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['ketua']['id_dosen'], nama: detailSidang['ketua']['nama_ketua']));
+          if(detailSidang['sekretaris']?['id_dosen'] != null) dosenList.add(Dosen(id: detailSidang['sekretaris']['id_dosen'], nama: detailSidang['sekretaris']['nama_sekretaris']));
+        }
+        enrichedBookings.add(EnrichedBooking(booking: booking, dosenTerlibat: dosenList));
+      } catch (e) {
+        // Abaikan jika detail sidang untuk booking tidak ditemukan, mungkin data tidak konsisten
+        continue;
+      }
+    }
+    
+    return enrichedBookings;
+  }
+
 
   static Future<void> logout() async {
       final String? token = await _getToken();

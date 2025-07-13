@@ -121,3 +121,10 @@ class DateTimeSessionConstraint extends DosenConstraint {
   String get description =>
       '${DateFormat('EEEE, dd MMMM yyyy', 'id_ID').format(date)} - Sesi ${sesi.nama}';
 }
+
+class EnrichedBooking {
+  final Booking booking;
+  final List<Dosen> dosenTerlibat;
+
+  EnrichedBooking({required this.booking, required this.dosenTerlibat});
+}

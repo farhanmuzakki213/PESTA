@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:pesta/csp_solver.dart';
 import 'package:pesta/draft_schedule_page.dart';
 import 'package:pesta/models/booking_model.dart';
+import 'package:pesta/services/api_service.dart';
 import 'package:pesta/widgets/add_constraint_dialog.dart';
 
 class SetConditionsPage extends StatefulWidget {
@@ -18,6 +19,9 @@ class _SetConditionsPageState extends State<SetConditionsPage> {
   final List<Dosen> _uniqueDosen = [];
   final Map<int, List<DosenConstraint>> _dosenConstraints = {};
   
+  List<EnrichedBooking> _existingBookings = [];
+  bool _isLoading = true;
+
   final List<Sesi> _allSessions = [
     Sesi(id: 1, nama: '08:00 - 10:00'),
     Sesi(id: 2, nama: '10:00 - 12:00'),
@@ -36,12 +40,32 @@ class _SetConditionsPageState extends State<SetConditionsPage> {
   @override
   void initState() {
     super.initState();
+    _loadInitialData();
     final seenDosenIds = <int>{};
     for (var student in widget.students) {
       for (var dosen in student.dosenTerlibat) {
         if (seenDosenIds.add(dosen.id)) {
           _uniqueDosen.add(dosen);
         }
+      }
+    }
+  }
+
+  Future<void> _loadInitialData() async {
+    try {
+      final bookings = await ApiService.getEnrichedBookings();
+      if(mounted){
+        setState(() {
+          _existingBookings = bookings;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if(mounted){
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat data booking yang ada: $e'))
+        );
       }
     }
   }
@@ -89,6 +113,7 @@ class _SetConditionsPageState extends State<SetConditionsPage> {
       availableSessions: _selectedSessions.toList(),
       availableRooms: _allRooms,
       dosenConstraints: _dosenConstraints,
+      existingBookings: _existingBookings,
     );
     
     Navigator.of(context, rootNavigator: true).pop();
@@ -103,6 +128,21 @@ class _SetConditionsPageState extends State<SetConditionsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Atur Kondisi Jadwal')),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Memuat data jadwal...'),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Atur Kondisi Jadwal')),
       body: ListView(
